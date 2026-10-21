@@ -45,6 +45,21 @@ port forward in front of this endpoint.
 
 ## Integrate an existing view
 
+Add the library to your Go module:
+
+```sh
+GOPRIVATE=github.com/auron-labs/mygo-mcp go get github.com/auron-labs/mygo-mcp
+```
+
+This repository is currently private, so your Go/Git environment needs access to
+`github.com/auron-labs/mygo-mcp`. The command scopes `GOPRIVATE` to this invocation;
+include this module in your existing `GOPRIVATE` setting for subsequent module
+updates. Import it as:
+
+```go
+import mygomcp "github.com/auron-labs/mygo-mcp"
+```
+
 Put the harness in a separate entry point, or behind a development build tag,
 outside the normal application import graph. Reuse the application's view,
 components, state constructors, services and normal handlers:
@@ -173,7 +188,34 @@ potentially hanging code; such code can also prevent shutdown from completing.
 These limits bound package-owned work, not arbitrary application allocations or
 blocking callbacks. Typed text is not logged by this package.
 
-## Verification
+## Development
+
+[mise](https://mise.jdx.dev/) pins the contributor toolchain and linters in
+[`mise.toml`](mise.toml). From a trusted checkout:
+
+```sh
+mise trust
+mise install
+mise exec -- hk install --mise
+mise run check
+mise run test
+mise run build
+```
+
+`mise run check` checks all tracked files with the existing hk linters and
+validates GitHub Actions syntax. Use `mise run format` to apply formatting and
+lint fixes. The local hooks check staged changes and require Conventional Commit
+messages, such as `fix: reject stale screenshots`.
+
+CI runs on pull requests and pushes to `main`: the module's minimum Go version
+owns tests/builds, while mise supplies the pinned lint toolchain. The Linux checks
+include race detection and CGO-disabled tests/builds. Dependabot checks Go modules
+and GitHub Actions weekly; the verified MyGo commit is updated manually.
+
+There is no tagged release or publishing workflow yet. The headless command is
+an example harness; integrate the library into your own development entry point.
+
+### Verification
 
 ```sh
 go test ./...
