@@ -18,7 +18,7 @@ func testServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.Close(ctx); err != nil {
 			t.Error(err)
@@ -120,16 +120,10 @@ func TestQueueOrderingCancellationAndShutdown(t *testing.T) {
 	}()
 	<-started
 	ctx, cancel := context.WithCancel(context.Background())
-	cancelled := make(chan error, 1)
-	go func() {
-		_, err := s.execute(ctx, func(context.Context) (any, error) { t.Error("executed cancelled command"); return true, nil })
-		cancelled <- err
-	}()
+	cancelled := command{ctx: ctx, run: func(context.Context) (any, error) { t.Error("executed cancelled command"); return true, nil }, done: make(chan outcome, 1)}
+	s.queue <- cancelled
 	cancel()
-	if err := <-cancelled; !errors.Is(err, context.Canceled) {
-		t.Errorf("cancellation: %v", err)
-	}
-	for range cap(s.queue) {
+	for range cap(s.queue) - 1 {
 		s.queue <- command{ctx: context.Background(), run: func(context.Context) (any, error) { return true, nil }, done: make(chan outcome, 1)}
 	}
 	if _, err := s.execute(context.Background(), func(context.Context) (any, error) { return true, nil }); err == nil {
@@ -138,6 +132,9 @@ func TestQueueOrderingCancellationAndShutdown(t *testing.T) {
 	close(release)
 	if err := <-first; err != nil {
 		t.Fatal(err)
+	}
+	if r := <-cancelled.done; !errors.Is(r.err, context.Canceled) {
+		t.Errorf("queued cancellation: %v", r.err)
 	}
 	if err := s.Close(context.Background()); err != nil {
 		t.Fatal(err)

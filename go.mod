@@ -22,4 +22,4 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 )
 
-replace github.com/egoist/mygo => github.com/aaronflorey/mygo v0.0.0-20261021030108-145da750b27c
+replace github.com/egoist/mygo => github.com/aaronflorey/mygo v0.0.0-20261021030745-df8d39b4a28f

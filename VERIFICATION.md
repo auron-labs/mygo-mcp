@@ -54,3 +54,35 @@ Unicode text worked, but IME composition is outside scope. The flow's fixed
 coordinates assume scale 1 and the example layout; it is a reproducible smoke
 test, not a selector API. macOS/Windows GUI execution is unavailable on this
 Linux machine.
+
+## Stage 4 — edge cases
+
+Updated the pinned framework to `df8d39b4a28fc83e09cea4a467962cab2caece36`
+(additional tests, unchanged driver implementation). Its focused tests pass for:
+
+- Unicode selection replacement, disabled button suppression, Tab traversal past
+  a disabled control, and Shift+Tab returning to the editor.
+- Cancellation during key-down still delivering key-up and cleared modifiers.
+- Resize epochs rejecting a previous geometry snapshot, even with unchanged size.
+- Closing a window during shortcut handling resolving the pending action.
+- Nested pending `Window.Update` calls becoming visible to the scene fence.
+- A view scheduling continuous timed updates, and capture while minimized under
+  the framework's fake surface (not a claim about a native OS minimized window).
+
+The package tests passed ten consecutive runs. A queue test was made deterministic:
+it now inserts a cancelled queued command before filling the remaining capacity,
+rather than racing cancellation against the queue fill. HTTP cleanup uses a
+10-second deadline, accommodating net/http's delayed connection teardown for an
+oversized unread request body, rather than a too-short one-second deadline.
+
+Ran `TestNativeResize` against the real desktop app: CUA changed the native window
+frame, the SDK client observed changed content geometry, rejected a click using
+the pre-resize screenshot, captured again, and accepted the fresh coordinates.
+No sleep-based synchronization was used. Background-window capture also worked
+in stage 3 while the second window covered the first.
+
+Not verified on hardware: DPI/monitor changes, native OS minimization, native
+shutdown during a platform event, or GPU animations. Scale/revision invalidation,
+minimized capture and close/cancellation are covered by focused checks, not
+misrepresented as native hardware evidence. The desktop provides one scale-1
+X11 display and no GPU; macOS/Windows runtimes are not present.

@@ -7,7 +7,7 @@ evaluation, OS automation, authentication, or automatic startup.
 Requires Go 1.27.3 and the native input seam in
 [MyGo fork PR #1](https://github.com/aaronflorey/mygo/pull/1), based on upstream
 `3dfa48145e523d029ea6959f6e129915eb16499d`. The dependency is pinned to fork commit
-`145da750b27cfa48879f79238798271b9b7f37ce`; no filesystem replacement is needed.
+`df8d39b4a28fc83e09cea4a467962cab2caece36`; no filesystem replacement is needed.
 An upstream PR was attempted but GitHub denied creation against `egoist/mygo`.
 Until upstream accepts the seam, consuming applications must also copy this
 repository's **remote** `replace github.com/egoist/mygo` directive into their own

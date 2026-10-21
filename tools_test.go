@@ -28,6 +28,11 @@ func TestScreenshotCoordinates(t *testing.T) {
 			t.Error("accepted stale geometry")
 		}
 	}
+	changed := g
+	changed.Revision++
+	if _, _, err := clickPoint(shot, a, changed); err == nil {
+		t.Error("accepted resized-away-and-back geometry")
+	}
 	a.ScreenshotID = "previous"
 	if _, _, err := clickPoint(shot, a, g); err == nil {
 		t.Error("accepted old screenshot")
