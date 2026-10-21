@@ -1,10 +1,15 @@
 # MyGo MCP implementation plan
 
+**Implemented (2026-10-21).** The package, six MCP tools, worker/lifecycle,
+integration tests, separate headless harness and documentation are complete.
+See [README.md](README.md) for usage and [VERIFICATION.md](VERIFICATION.md) for
+the available delivery checks and remaining platform limitations.
+
 Build an opt-in **Go package** that lets an MCP agent exercise a project's native MyGo views through the **public headless `ui.Tester` API**. Support registered test sessions, screenshots, coordinate clicks, text input, key chords, and simulated time. Reuse application views and their normal handlers with isolated test state.
 
 **No MyGo patch or fork is required or permitted.** Depend on an unmodified revision of `github.com/egoist/mygo` and use only exported APIs. Do not bypass this constraint with internal imports, unsafe access, reflection into internals, `go:linkname`, copied framework internals, or module replacements.
 
-This supersedes the live-window plan and its required upstream input driver. The user chose headless testing over OS automation: the server operates an in-memory UI instance, not the running desktop application's windows or state. This checkout currently contains a plan, not an implemented MCP package.
+This supersedes the live-window plan and its required upstream input driver. The user chose headless testing over OS automation: the server operates an in-memory UI instance, not the running desktop application's windows or state.
 
 ## Existing behavior to reuse
 
@@ -127,4 +132,4 @@ Run relevant available Go tests and builds, including `CGO_ENABLED=0` where supp
 - Defer semantic selectors, remote fixture creation/reset, recordings, assertions, launcher/stdio bridge, remote hosting, and automatic project rewriting.
 - The [fork PR](https://github.com/aaronflorey/mygo/pull/1) is not a dependency or prerequisite. This plan supersedes its input-driver stage. Do not modify or close that PR without separate instruction.
 
-Delivery means an implemented headless package, example, and documentation against unmodified upstream, with available verification reported. This document is the revised plan and does not claim implementation is complete.
+Delivery means an implemented headless package, example, and documentation against unmodified upstream, with available verification reported. Implementation and available verification are recorded in the documents linked above; the boundaries in this plan remain intentional.

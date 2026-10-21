@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func waitSignal(t *testing.T, ch <-chan struct{}) {
@@ -183,6 +184,48 @@ func TestCancellationAfterDispatchInvalidatesScreenshot(t *testing.T) {
 	}
 }
 
+func TestCancelledHTTPClickFinishesWithoutReplay(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	clicks := 0
+	s := testService(t, Fixture{Name: "blocking handler", Width: 200, Height: 100, Factory: func() (func(*ui.Context), func(), error) {
+		return func(c *ui.Context) {
+			if ui.Button(c, "Click").Size(100, 40).Clicked() {
+				clicks++
+				close(started)
+				<-release
+			}
+		}, nil, nil
+	}})
+	cs := testClient(t, s)
+	id := s.sessions[0].id
+	shot := takeShot(t, cs, id)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	returned := make(chan error, 1)
+	go func() {
+		_, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "mygo_click", Arguments: clickInput{id, shot.ScreenshotID, 50, 20}})
+		returned <- err
+	}()
+	waitSignal(t, started)
+	cancel()
+	select {
+	case err := <-returned:
+		if err == nil {
+			t.Fatal("HTTP caller did not observe cancellation")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("HTTP cancellation waited for blocking callback")
+	}
+	release <- struct{}{}
+	v, err := s.call(t.Context(), id, func(x *session) (any, error) { return clicks == 1 && x.shot == nil, nil })
+	if err != nil || v != true {
+		t.Fatal("cancelled click replayed or retained screenshot", err)
+	}
+	toolError(t, cs, "mygo_click", clickInput{id, shot.ScreenshotID, 50, 20})
+	_ = takeShot(t, cs, id)
+}
+
 func TestShutdownWaitsForSynchronousRenderAndCleansOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -237,7 +280,7 @@ func TestShutdownWaitsForSynchronousRenderAndCleansOnce(t *testing.T) {
 func TestSessionPanicsAndConstructionFailures(t *testing.T) {
 	var cleaned atomic.Int32
 	t.Cleanup(func() {
-		if cleaned.Load() != 2 {
+		if cleaned.Load() != 3 {
 			t.Errorf("successful factory cleanup count: %d", cleaned.Load())
 		}
 	})
@@ -259,10 +302,11 @@ func TestSessionPanicsAndConstructionFailures(t *testing.T) {
 			}, func() { cleaned.Add(1); panic("cleanup panic") }, nil
 		}},
 		demoFixture("healthy", 1),
+		{Name: "nil view", Width: 100, Height: 50, Factory: func() (func(*ui.Context), func(), error) { return nil, func() { cleaned.Add(1) }, nil }},
 	}
 	s := testService(t, fixtures...)
 	cs := testClient(t, s)
-	for _, x := range s.sessions[:3] {
+	for _, x := range []*session{s.sessions[0], s.sessions[1], s.sessions[2], s.sessions[5]} {
 		if x.failed == nil || strings.Contains(x.failed.Error(), "secret text") {
 			t.Fatal("panic was not isolated or leaked text", x.failed)
 		}
@@ -278,7 +322,7 @@ func TestSessionPanicsAndConstructionFailures(t *testing.T) {
 		Sessions []sessionInfo `json:"sessions"`
 	}
 	callTool(t, cs, "mygo_sessions", struct{}{}, &list)
-	if len(list.Sessions) != 5 || list.Sessions[3].Failed == "" || len(list.Sessions[3].Operations) != 0 {
+	if len(list.Sessions) != 6 || list.Sessions[3].Failed == "" || len(list.Sessions[3].Operations) != 0 {
 		t.Fatal("failed session not discoverable")
 	}
 	if cleaned.Load() != 0 {

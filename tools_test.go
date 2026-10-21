@@ -297,8 +297,29 @@ func TestContinuousFramesAreBounded(t *testing.T) {
 	if frames-before > 100 {
 		t.Fatal("unbounded frame loop")
 	}
+	before = frames
+	callTool(t, cs, "mygo_advance", advanceInput{id, 1000}, nil)
+	if frames-before > 1500 {
+		t.Fatal("advance exceeded bounded frame work")
+	}
 	next := takeShot(t, cs, id)
-	if !next.Time.Equal(shot.Time) || !next.FramePending {
-		t.Fatal("wall time advanced clock or pending flag lost")
+	if next.Time.Sub(shot.Time) != time.Second || !next.FramePending {
+		t.Fatal("explicit clock advance or pending flag lost")
+	}
+}
+
+func TestFractionalScaleCoordinates(t *testing.T) {
+	for _, scale := range []float32{0.75, 1.25, 2, 4} {
+		s := testService(t, demoFixture("scaled", scale))
+		cs := testClient(t, s)
+		id := s.sessions[0].id
+		shot := takeShot(t, cs, id)
+		// The largest in-image floating-point point must remain in bounds after conversion.
+		callTool(t, cs, "mygo_click", clickInput{id, shot.ScreenshotID, math.Nextafter(float64(shot.ImageWidth), 0), math.Nextafter(float64(shot.ImageHeight), 0)}, nil)
+		shot = takeShot(t, cs, id)
+		clickDIP(t, cs, shot, 100, 20)
+		if !hasText(t, s, id, "Submit") {
+			t.Fatalf("scale %v misrouted coordinate", scale)
+		}
 	}
 }

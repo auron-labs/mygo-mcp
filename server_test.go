@@ -106,6 +106,9 @@ func TestRunLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	address := listener.Addr().String()
+	if err := Run(t.Context(), address, []Fixture{demoFixture("occupied", 1)}); err == nil {
+		t.Fatal("accepted occupied listener")
+	}
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}

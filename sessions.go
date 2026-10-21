@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -125,7 +126,10 @@ func protect(x *session, fn func() (any, error)) (r outcome) {
 	defer func() {
 		if p := recover(); p != nil {
 			// Panic values may contain committed text; report the type, not the value.
-			r.err = fmt.Errorf("session failed after panic (%T); restart harness", p)
+			var pcs [1]uintptr
+			n := runtime.Callers(3, pcs[:])
+			frame, _ := runtime.CallersFrames(pcs[:n]).Next()
+			r.err = fmt.Errorf("session failed after panic (%T at %s:%d, %s); restart harness", p, frame.File, frame.Line, frame.Function)
 			if x != nil {
 				x.failed = r.err
 				x.shot = nil

@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -45,12 +44,11 @@ func (s *service) handler() http.Handler {
 			return
 		}
 		if origins := r.Header.Values("Origin"); len(origins) != 0 {
-			origin, err := url.Parse(origins[0])
 			scheme := "http"
 			if r.TLS != nil {
 				scheme = "https"
 			}
-			if len(origins) != 1 || err != nil || origin.User != nil || origin.Host != r.Host || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.Scheme != scheme {
+			if len(origins) != 1 || origins[0] != scheme+"://"+r.Host {
 				http.Error(w, "unexpected browser origin", http.StatusForbidden)
 				return
 			}
