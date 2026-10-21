@@ -118,3 +118,45 @@ These are compilation checks, not macOS/Windows runtime certification. GPU
 framebuffer parity, cross-platform GUI execution and hardware benchmarks were
 not run because the available machine is a Linux software-rendered desktop;
 the plan makes those unavailable checks non-blocking.
+
+## Stage 6 — documentation and pinned delivery
+
+The README now includes existing-app lifecycle integration, enabled/disabled
+build files, a pinned install command, local HTTP client configuration, every
+tool's argument/result contract, coordinate and stale-handle rules, resource
+bounds, cancellation semantics and the complete native interaction flow.
+
+No development-only filesystem replacement remains. The official SDK is pinned
+at v1.8.0 and MyGo's remote fork at
+`v0.0.0-20261021030745-df8d39b4a28f`, with go.sum committed. Upstream acceptance
+cannot be claimed: submission to egoist/mygo was attempted and denied by GitHub
+integration permissions. Removing the remote fork replacement therefore remains
+conditional on upstream acceptance; downstream apps must copy it explicitly.
+
+Verified the documented install from a separate consumer module with no local
+path replacements: fetched the pinned package commit, copied the native example
+files, ran tidy, and built both default and MCP-enabled binaries. The first
+unscoped fetch failed at the public checksum service because this repository is
+private. Using the narrowly scoped `GOPRIVATE` setting and existing GitHub Git
+credentials succeeded; the README includes that requirement. No credentials or
+token values are needed in the documentation or MCP client configuration.
+
+Final recheck: rebuilt the example against the remote pinned dependency and
+build-selected startup helpers, reran default tests and tagged lint, then reran
+the complete native SDK flow successfully on fresh desktop windows. The final
+application again printed `Submitted: Selected café 世界`.
+
+### Review order
+
+1. [Native framework seam](https://github.com/aaronflorey/mygo/pull/1).
+2. [Embedded MCP package](https://github.com/auron-labs/mygo-mcp/pull/1).
+3. [Native example and full interaction](https://github.com/auron-labs/mygo-mcp/pull/2).
+4. [Edge-case verification](https://github.com/auron-labs/mygo-mcp/pull/3).
+5. [Builds and production isolation](https://github.com/auron-labs/mygo-mcp/pull/4).
+6. Final documentation: the `docs/integration-guide` PR.
+
+The MCP PRs are stacked on the preceding stage to keep each review limited to
+its own changes. Merge in that order and retarget each next PR to main after its
+base merges. No PR was merged automatically. All six delivery steps were
+attempted; unavailable verification and the upstream-publication exception are
+recorded above rather than hidden or treated as proof of defects.
