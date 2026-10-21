@@ -9,8 +9,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-var startAutomation = func() func() { return func() {} }
-
 type form struct {
 	editing      bool
 	text, result string

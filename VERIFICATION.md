@@ -86,3 +86,35 @@ shutdown during a platform event, or GPU animations. Scale/revision invalidation
 minimized capture and close/cancellation are covered by focused checks, not
 misrepresented as native hardware evidence. The desktop provides one scale-1
 X11 display and no GPU; macOS/Windows runtimes are not present.
+
+## Stage 5 — builds and production isolation
+
+Passed on Linux amd64 with Go 1.27.3:
+
+- `CGO_ENABLED=0 go test ./...`, vet with default and
+  `mygo_mcp,mygo_noinspector` tags, production-tag build.
+- Tagged package/example cross-builds for Linux, macOS and Windows.
+- Repository lint, including the tagged integration build.
+- Race detector package tests (`CGO_ENABLED=1` only for Go's race instrumentation;
+  production builds above remain pure Go with `CGO_ENABLED=0`).
+- Final upstream size comparison with identical release flags:
+
+  | Uninstrumented app | Base revision | Driver revision |
+  | --- | ---: | ---: |
+  | Native counter | 9,347,335 bytes | 9,347,335 bytes |
+  | Hello webview | 9,433,351 bytes | 9,433,351 bytes |
+
+`scripts/check-builds.sh` repeats the supported checks and asserts that the
+default native example neither imports the MCP package/SDK nor records the SDK
+in its compiled module metadata. The enabled build must contain the SDK. CI runs
+that script without needing a desktop.
+
+Example production binaries: 9,355,527 bytes without MCP and 13,349,127 bytes
+with MCP. Tagged-build lint found an init function in the development example;
+it was removed in favor of build-selected enabled/disabled startup functions.
+Importing the package still never opens a listener.
+
+These are compilation checks, not macOS/Windows runtime certification. GPU
+framebuffer parity, cross-platform GUI execution and hardware benchmarks were
+not run because the available machine is a Linux software-rendered desktop;
+the plan makes those unavailable checks non-blocking.
