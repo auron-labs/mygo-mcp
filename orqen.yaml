@@ -1,0 +1,9 @@
+agent:
+    - codex
+scope: project
+references:
+    - repo: https://github.com/egoist/mygo
+      name: mygo
+extends:
+  - core
+  - go
