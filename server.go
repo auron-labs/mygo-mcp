@@ -1,15 +1,18 @@
 package mygomcp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,7 +34,6 @@ func (s *service) handler() http.Handler {
 	s.registerTools(server)
 	transport := http.NewCrossOriginProtection().Handler(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 		// Keep SDK Host checks too; this also covers in-process HTTP test clients.
 		host := r.Host
 		if h, _, err := net.SplitHostPort(host); err == nil {
@@ -44,11 +46,25 @@ func (s *service) handler() http.Handler {
 		}
 		if origins := r.Header.Values("Origin"); len(origins) != 0 {
 			origin, err := url.Parse(origins[0])
-			if len(origins) != 1 || err != nil || origin.User != nil || origin.Host != r.Host || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || (origin.Scheme != "http" && origin.Scheme != "https") {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			if len(origins) != 1 || err != nil || origin.User != nil || origin.Host != r.Host || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.Scheme != scheme {
 				http.Error(w, "unexpected browser origin", http.StatusForbidden)
 				return
 			}
 		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1024*1024))
+		if err != nil {
+			http.Error(w, "request body exceeds limit or could not be read", http.StatusBadRequest)
+			return
+		}
+		if !utf8.Valid(body) {
+			http.Error(w, "request body must be UTF-8", http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		transport.ServeHTTP(w, r)
 	})
 }
@@ -77,7 +93,7 @@ func Run(ctx context.Context, address string, fixtures []Fixture) error {
 	defer func() { cancel(); <-s.done }()
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", s.handler())
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 16 * 1024}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 16 * 1024}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()
 	select {

@@ -39,6 +39,27 @@ type advanceInput struct {
 	Milliseconds float64 `json:"milliseconds" jsonschema:"Integer simulated duration from 0 through 1000"`
 }
 
+func (in clickInput) validate() error {
+	if in.ScreenshotID == "" || !finite(in.X) || !finite(in.Y) || in.X < 0 || in.Y < 0 {
+		return errors.New("screenshot_id and finite nonnegative pixel coordinates required")
+	}
+	return nil
+}
+
+func (in typeInput) validate() error {
+	if !utf8.ValidString(in.Text) || len(in.Text) > maxTextBytes {
+		return errors.New("text must be valid UTF-8 and at most 65536 bytes")
+	}
+	return nil
+}
+
+func (in advanceInput) validate() error {
+	if !finite(in.Milliseconds) || in.Milliseconds < 0 || in.Milliseconds > maxAdvanceMS || math.Trunc(in.Milliseconds) != in.Milliseconds {
+		return errors.New("milliseconds must be an integer from 0 through 1000")
+	}
+	return nil
+}
+
 type sessionInfo struct {
 	ID         string   `json:"session_id"`
 	Name       string   `json:"name"`
@@ -160,13 +181,7 @@ func (s *service) registerTools(server *mcp.Server) {
 		})
 	})
 	addTool(server, "mygo_click", "Deliver one left click in pixels of the latest screenshot. Requires a new screenshot after any mutation.", func(ctx context.Context, in clickInput) (payload, error) {
-		validate := func() error {
-			if in.ScreenshotID == "" || !finite(in.X) || !finite(in.Y) || in.X < 0 || in.Y < 0 {
-				return errors.New("screenshot_id and finite nonnegative pixel coordinates required")
-			}
-			return nil
-		}
-		return s.operation(ctx, in.SessionID, validate, false, func(x *session) (payload, error) {
+		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
 			shot := x.shot
 			if shot == nil || shot.id != in.ScreenshotID {
 				return payload{}, errors.New("missing, wrong-session, or stale screenshot_id")
@@ -177,17 +192,13 @@ func (s *service) registerTools(server *mcp.Server) {
 			dipX := in.X * float64(x.fixture.Width) / float64(shot.width)
 			dipY := in.Y * float64(x.fixture.Height) / float64(shot.height)
 			x.shot = nil
-			x.tester.ClickAt(float32(dipX), float32(dipY))
+			// Keep valid near-edge pixels inside content after float32 rounding.
+			x.tester.ClickAt(min(float32(dipX), math.Nextafter32(float32(x.fixture.Width), 0)), min(float32(dipY), math.Nextafter32(float32(x.fixture.Height), 0)))
 			return payload{metadata: currentStatus(x, true)}, nil
 		})
 	})
 	addTool(server, "mygo_type", "Deliver committed Unicode to the focused control. Delivery does not imply acceptance; inspect a screenshot.", func(ctx context.Context, in typeInput) (payload, error) {
-		return s.operation(ctx, in.SessionID, func() error {
-			if !utf8.ValidString(in.Text) || len(in.Text) > maxTextBytes {
-				return errors.New("text must be valid UTF-8 and at most 65536 bytes")
-			}
-			return nil
-		}, true, func(x *session) (payload, error) {
+		return s.operation(ctx, in.SessionID, in.validate, true, func(x *session) (payload, error) {
 			x.tester.Type(in.Text)
 			return payload{metadata: currentStatus(x, true)}, nil
 		})
@@ -203,12 +214,7 @@ func (s *service) registerTools(server *mcp.Server) {
 		})
 	})
 	addTool(server, "mygo_advance", "Advance frozen tester time by 0..1000 integer milliseconds; does not wait for external services or imply idleness.", func(ctx context.Context, in advanceInput) (payload, error) {
-		return s.operation(ctx, in.SessionID, func() error {
-			if !finite(in.Milliseconds) || in.Milliseconds < 0 || in.Milliseconds > maxAdvanceMS || math.Trunc(in.Milliseconds) != in.Milliseconds {
-				return errors.New("milliseconds must be an integer from 0 through 1000")
-			}
-			return nil
-		}, true, func(x *session) (payload, error) {
+		return s.operation(ctx, in.SessionID, in.validate, true, func(x *session) (payload, error) {
 			x.tester.Advance(time.Duration(in.Milliseconds) * time.Millisecond)
 			return payload{metadata: currentStatus(x, true)}, nil
 		})
