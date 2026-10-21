@@ -114,6 +114,12 @@ with MCP. Tagged-build lint found an init function in the development example;
 it was removed in favor of build-selected enabled/disabled startup functions.
 Importing the package still never opens a listener.
 
+GitHub Actions was attempted, but its jobs never started (zero executed steps).
+The check annotation reported recent account payments failing or the spending
+limit needing an increase. This is an account-level runner provisioning blocker,
+not a failed build/test command. The same workflow script passed locally; no
+billing settings were changed and remote CI success is not claimed.
+
 These are compilation checks, not macOS/Windows runtime certification. GPU
 framebuffer parity, cross-platform GUI execution and hardware benchmarks were
 not run because the available machine is a Linux software-rendered desktop;
