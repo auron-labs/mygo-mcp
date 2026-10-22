@@ -29,7 +29,7 @@ func validateAddress(address string) error {
 }
 
 func (s *service) handler() http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: "mygo-mcp", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "mygo-mcp", Version: "0.1.0"}, nil) // x-release-please-version
 	s.registerTools(server)
 	transport := http.NewCrossOriginProtection().Handler(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

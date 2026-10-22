@@ -1,109 +1,134 @@
 # MyGo MCP
 
-An opt-in Go package for exercising **isolated, headless MyGo views** using MCP.
-It does not discover or control desktop windows. Importing it starts nothing.
-MyGo is pinned to unmodified upstream commit
-`3dfa48145e523d029ea6959f6e129915eb16499d`; no fork, patch, internal imports,
-module replacement, reflection, or unsafe access is used.
+Give an MCP client a way to inspect, click, type into, and capture screenshots of
+your MyGo views. Register isolated headless fixtures that reuse your application's
+views and handlers, then exercise them without opening a desktop window.
 
-## Run the example
+MyGo MCP is an opt-in Go library. Importing it starts nothing, and it does not
+discover or control running desktop applications.
 
-Requires Go 1.27.1 or later (the pinned MyGo requirement). Go's automatic
-toolchain selection can download it. No desktop session or CGO is required on Linux.
+## Install
 
-```sh
-go run ./examples/headless -listen 127.0.0.1:8080
-```
+Requires **Go 1.27.1 or later** and a client that supports MCP Streamable HTTP.
+Linux headless operation requires neither a desktop session nor CGO.
 
-Configure an MCP client for **Streamable HTTP** at `http://127.0.0.1:8080/mcp`.
-The client must run on the **same machine** as the harness; this is not a hosted
-or remote-control endpoint. The address is explicit, so separate harnesses can
-use separate ports. IPv6 loopback (`[::1]:8080`) also works. Hostnames, wildcard
-addresses and non-loopback IPs are rejected for listeners.
-
-The pinned official `github.com/modelcontextprotocol/go-sdk` v1.8.0 provides
-schemas, tool errors, cancellation, image encoding on the wire, and stateless
-HTTP. With its Go client, configure:
-
-```go
-transport := &mcp.StreamableClientTransport{
-    Endpoint: "http://127.0.0.1:8080/mcp",
-    DisableStandaloneSSE: true,
-    MaxRetries: -1,
-}
-session, err := client.Connect(ctx, transport, nil)
-```
-
-Stateless MCP protocol connections do **not** reset the persistent headless
-fixtures. GET/DELETE return 405. There is no authentication: any local process
-reaching the port can operate fixtures and invoke their ordinary handlers.
-Use test data and test services. The SDK's localhost Host validation is retained;
-an additional loopback/localhost Host check and exact same-origin browser check
-reject DNS-rebinding and unexpected browser origins. Cross-origin unsafe requests
-are also checked by `http.CrossOriginProtection`. Do not put a proxy or public
-port forward in front of this endpoint.
-
-## Integrate an existing view
-
-Add the library to your Go module:
+From your application's Go module:
 
 ```sh
-GOPRIVATE=github.com/auron-labs/mygo-mcp go get github.com/auron-labs/mygo-mcp
+go get github.com/auron-labs/mygo-mcp@latest
 ```
 
-This repository is currently private, so your Go/Git environment needs access to
-`github.com/auron-labs/mygo-mcp`. The command scopes `GOPRIVATE` to this invocation;
-include this module in your existing `GOPRIVATE` setting for subsequent module
-updates. Import it as:
+This installs the latest released module version. See [releases](https://github.com/auron-labs/mygo-mcp/releases)
+for version history; pin a specific tag in `go get` when you need reproducible setup.
+If accessing a private copy, configure Git authentication and include
+`github.com/auron-labs/mygo-mcp` in your existing `GOPRIVATE` setting first.
+
+## Start a harness
+
+Create a separate development entry point, such as `cmd/harness/main.go`.
+This complete example exposes an editable field and a button:
 
 ```go
-import mygomcp "github.com/auron-labs/mygo-mcp"
-```
+package main
 
-Put the harness in a separate entry point, or behind a development build tag,
-outside the normal application import graph. Reuse the application's view,
-components, state constructors, services and normal handlers:
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
 
-```go
-fixture := mygomcp.Fixture{
-    Name: "Seeded editor",
-    Width: 800, Height: 600, // DIPs, not pixels
-    Scale: 1.5,             // omitted/zero means 1
-    Factory: func() (func(*ui.Context), func(), error) {
-        state := newTestApplicationState() // project-owned constructor/services
-        return state.View, state.Close, nil
-    },
+    mygomcp "github.com/auron-labs/mygo-mcp"
+    "github.com/egoist/mygo/ui"
+)
+
+func main() {
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+    defer stop()
+
+    fixture := mygomcp.Fixture{
+        Name: "Greeting", Width: 800, Height: 600,
+        Factory: func() (func(*ui.Context), func(), error) {
+            var name, greeting string
+            view := func(c *ui.Context) {
+                ui.Column(c).Children(func() {
+                    ui.TextInput(c, &name).Label("Name")
+                    if ui.Button(c, "Greet").Clicked() {
+                        greeting = "Hello, " + name
+                    }
+                    ui.Text(c, greeting)
+                })
+            }
+            return view, nil, nil
+        },
+    }
+    if err := mygomcp.Run(ctx, "127.0.0.1:8080", []mygomcp.Fixture{fixture}); err != nil {
+        log.Fatal(err)
+    }
 }
-err := mygomcp.Run(ctx, "127.0.0.1:8080", []mygomcp.Fixture{fixture})
 ```
 
-The constructor and cleanup in that snippet are project-specific, not package
-APIs. A complete compilable example is in [`examples/headless`](examples/headless/main.go).
-It and the tests share the same [application view](internal/demo/view.go).
-It includes navigation, an editable field, button and primary+Enter submission,
-and a delayed visible update using tester time.
+Run it from your module root:
 
-Factories run once per fixture on the single owning worker. Construct independent
-state there, **not in the render function**, and never share mutable state with a
-desktop window. Platform-dependent view construction must be adapted explicitly
-in the host project's harness; keep existing components (including Onevra where
-used) rather than inventing a second view or replacing handlers.
+```sh
+go run ./cmd/harness
+```
 
-All tester calls, view callbacks, PNG encoding and cleanup run on that worker,
-serialized across fixtures. Background work must synchronize its results and apply
-them safely before rendering. Prefer deterministic existing test services. A fresh
-screenshot requests a build so synchronized new state can appear. Tester time does
-not control goroutines, networking, external services or wall-clock application logic.
+Configure your MCP client to connect using **Streamable HTTP** to
+`http://127.0.0.1:8080/mcp`. Run the client on the same machine as the harness.
+Stop the harness with Ctrl+C.
 
-Cancel `Run`'s context to stop accepting HTTP requests and cancel queued work.
-In-flight synchronous operations finish before cleanup runs once; `Run` waits for
-that cleanup. Factories that fail or panic own cleanup of partially created
-resources. If a factory returns successfully, its cleanup still runs if tester
-construction/rendering later panics. MyGo has no public tester disposal API.
-Panics fail only the affected fixture permanently; discovery reports the failure
-and other fixtures keep working. Panic values are not reported, to avoid exposing
-typed text. Restart the harness for a clean run. There is no remote reset/create tool.
+In an existing application, replace the example view with your real view and
+construct independent seeded state inside `Factory`. Return its cleanup function
+alongside the view when needed. Keep the harness outside the normal application
+entry point, and keep mutable state separate from desktop windows.
 
+## Use it
+
+Ask your connected agent to list fixtures, inspect the Greeting fixture, focus
+the Name field, type a name, click Greet, and verify the greeting in a screenshot.
+The tools support:
+
+- **Discovery and inspection:** `mygo_sessions`, `mygo_inspect`, `mygo_screenshot`.
+- **Interaction:** `mygo_click_label`, `mygo_click`, `mygo_type`, `mygo_key`, `mygo_scroll`.
+- **Simulated time:** `mygo_advance`, `mygo_wait_text`.
+
+Screenshots contain PNG images. Label clicks use exact text or explicit MyGo
+labels; coordinate clicks use image pixels. Actions invalidate the current
+observation, so inspect again before targeting another action, or request
+`screenshot: true` with the action to get the next image and observation ID.
+
+Give your agent the [agent guide](docs/AGENT_GUIDE.md) for tool inputs, a working
+loop, observation rules, error recovery, timing, and integration details.
+
+## Configuration and limits
+
+`Run` takes a context, an explicit loopback IP and port, and 1–16 fixtures.
+Use a different port for each harness; `[::1]:8080` also works. Fixture dimensions
+are in DIPs, and `Scale` defaults to 1. Geometry stays fixed for the run.
+Cancel the context to stop the server and run fixture cleanup.
+
+The endpoint has no authentication. Local processes can invoke your fixtures'
+ordinary handlers, so use test data and test services. Keep it on loopback and
+do not expose it through a proxy or public port forward.
+
+Headless views cannot exercise OS dialogs, system webviews, desktop focus, or
+other native window behavior. Screenshots use software rendering. Views requiring
+platform services need explicit adaptation in the harness.
+
+## Troubleshooting
+
+- **Connection fails:** start the harness first, check its address and port, and
+  select Streamable HTTP in your client. This package does not provide a stdio server.
+- **Listener rejected:** use an explicit loopback IP, such as `127.0.0.1`, rather
+  than `localhost`, a wildcard, or a non-loopback address.
+- **Stale observation:** inspect again and use the new observation ID. A reconnect
+  preserves fixture state; restart the harness for a fresh run.
+- **Text does not change:** focus the editable field before typing and verify the
+  next observation. Successful delivery does not prove a handler accepted input.
+- **Delayed UI stays unchanged:** use `mygo_wait_text` or `mygo_advance` for tester
+  timers. Wall-clock sleeps do not advance simulated time.
+
+// refused_by: modify_delete_guard · collision: none (no common ancestor text)
 ## Tools
 
 Every targeted tool requires a `session_id` from `mygo_sessions`. IDs are opaque,
@@ -243,6 +268,7 @@ can match, and explicit labels can replace a control's displayed text in MyGo's
 text queries. This advances the tester clock, not wall-clock services,
 networking, or background goroutines, and does not guarantee application idleness.
 
+// refused_by: modify_delete_guard · collision: none (no common ancestor text)
 ### Input, clock and completion
 
 `Type` delivers committed Unicode, not IME composition. Delivery does **not** mean
@@ -279,6 +305,7 @@ handlers must be nonblocking, with long work outside them. Deadlines cannot stop
 arbitrary blocking application callbacks. Use a disposable harness process for
 potentially hanging code; such code can also prevent shutdown from completing.
 
+// refused_by: modify_delete_guard · collision: none (no common ancestor text)
 ### Fixed resource limits
 
 - 1–16 fixtures; names are nonempty UTF-8, at most 256 bytes (names need not be unique).
@@ -301,8 +328,7 @@ blocking callbacks. Typed text is not logged by this package.
 
 ## Development
 
-[mise](https://mise.jdx.dev/) pins the contributor toolchain and linters in
-[`mise.toml`](mise.toml). From a trusted checkout:
+From a trusted checkout, use the toolchain pinned in [mise.toml](mise.toml):
 
 ```sh
 mise trust
@@ -313,37 +339,11 @@ mise run test
 mise run build
 ```
 
-`mise run check` checks all tracked files with the existing hk linters and
-validates GitHub Actions syntax. Use `mise run format` to apply formatting and
-lint fixes. The local hooks check staged changes and require Conventional Commit
-messages, such as `fix: reject stale screenshots`.
-
-CI runs on pull requests and pushes to `main`: the module's minimum Go version
-owns tests/builds, while mise supplies the pinned lint toolchain. The Linux checks
-include race detection and CGO-disabled tests/builds. Dependabot checks Go modules
-and GitHub Actions weekly; the verified MyGo commit is updated manually.
-
-There is no tagged release or publishing workflow yet. The headless command is
-an example harness; integrate the library into your own development entry point.
-
-### Verification
-
-```sh
-go test ./...
-go test -race ./...
-CGO_ENABLED=0 go test ./...
-go vet ./...
-go build ./...
-CGO_ENABLED=0 go build ./...
-go mod verify
-```
-
-Tests use real public testers and SDK clients over `httptest` HTTP, decode PNGs,
-exercise UI state/visible output, and check isolation, restart IDs, scale/rounding,
-validation, stale screenshots, queue ordering/full queues, cancellation,
-shutdown/cleanup, panics, timers, continuous frames and endpoint restrictions.
-See [`VERIFICATION.md`](VERIFICATION.md) for the recorded delivery checks.
-
+Use `mise run format` to apply formatting and lint fixes. To try the included
+demo, run `go run ./examples/headless -listen 127.0.0.1:8080`.
+See [verification notes](VERIFICATION.md) for recorded checks.
+Maintainers can follow the [release guide](docs/RELEASING.md) to publish versions.
+// refused_by: modify_delete_guard · collision: none (no common ancestor text)
 ## Not supported
 
 No live-window discovery/control, OS automation, desktop permissions, OS menus or
