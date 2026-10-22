@@ -28,7 +28,7 @@ func (s *State) View(c *ui.Context) {
 			}
 			return
 		}
-		ui.TextInput(c, &s.Text).Size(200, 40)
+		ui.TextInput(c, &s.Text).Label("Message").Size(200, 40)
 		submit := ui.Button(c, "Submit").Size(200, 40).Clicked()
 		if c.Shortcut(ui.Cmd, ui.KeyEnter) || submit {
 			s.Submitted = s.Text

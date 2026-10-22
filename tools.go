@@ -1,12 +1,10 @@
 package mygomcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image/png"
 	"math"
 	"strings"
 	"time"
@@ -21,18 +19,73 @@ type sessionInput struct {
 }
 type clickInput struct {
 	SessionID    string  `json:"session_id"`
-	ScreenshotID string  `json:"screenshot_id"`
+	ScreenshotID string  `json:"screenshot_id,omitempty"`
 	X            float64 `json:"x" jsonschema:"Horizontal screenshot pixel coordinate"`
 	Y            float64 `json:"y" jsonschema:"Vertical screenshot pixel coordinate"`
 }
+type clickRequest struct {
+	clickInput
+	ObservationID string `json:"observation_id,omitempty" jsonschema:"Latest inspection or screenshot observation ID; alternatively supply screenshot_id"`
+	Screenshot    bool   `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
+}
+
+func (in clickRequest) validate() error {
+	id, err := observationID(in.ScreenshotID, in.ObservationID)
+	if err != nil {
+		return err
+	}
+	base := in.clickInput
+	base.ScreenshotID = id
+	if err := base.validate(); err != nil {
+		return &targetError{Code: "out_of_bounds", Message: err.Error()}
+	}
+	return nil
+}
+
 type typeInput struct {
 	SessionID string `json:"session_id"`
 	Text      string `json:"text" jsonschema:"Committed UTF-8 text; at most 65536 bytes"`
 }
+type typeRequest struct {
+	typeInput
+	Screenshot bool `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
+}
+type clickLabelInput struct {
+	SessionID    string `json:"session_id"`
+	ScreenshotID string `json:"screenshot_id,omitempty"`
+	Label        string `json:"label" jsonschema:"Exact visible text or explicit MyGo Label; must match uniquely"`
+}
+type clickLabelRequest struct {
+	clickLabelInput
+	ObservationID string `json:"observation_id,omitempty" jsonschema:"Latest inspection or screenshot observation ID; alternatively supply screenshot_id"`
+	Screenshot    bool   `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
+}
+
+func (in clickLabelRequest) validate() error {
+	id, err := observationID(in.ScreenshotID, in.ObservationID)
+	if err != nil {
+		return err
+	}
+	base := in.clickLabelInput
+	base.ScreenshotID = id
+	return base.validate()
+}
+
+func (in clickLabelInput) validate() error {
+	if in.ScreenshotID == "" || in.Label == "" || !utf8.ValidString(in.Label) || len(in.Label) > maxTextBytes {
+		return errors.New("screenshot_id and nonempty UTF-8 label of at most 65536 bytes required")
+	}
+	return nil
+}
+
 type keyInput struct {
 	SessionID string   `json:"session_id"`
 	Key       string   `json:"key"`
 	Modifiers []string `json:"modifiers,omitempty"`
+}
+type keyRequest struct {
+	keyInput
+	Screenshot bool `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
 }
 type advanceInput struct {
 	SessionID    string  `json:"session_id"`
@@ -78,12 +131,15 @@ type status struct {
 }
 type screenshotInfo struct {
 	status
-	ScreenshotID  string  `json:"screenshot_id"`
-	ImageWidth    int     `json:"image_width"`
-	ImageHeight   int     `json:"image_height"`
-	ContentWidth  int     `json:"content_width"`
-	ContentHeight int     `json:"content_height"`
-	Scale         float32 `json:"scale"`
+	ObservationID string       `json:"observation_id"`
+	ScreenshotID  string       `json:"screenshot_id,omitempty"`
+	ImageWidth    int          `json:"image_width"`
+	ImageHeight   int          `json:"image_height"`
+	ContentWidth  int          `json:"content_width"`
+	ContentHeight int          `json:"content_height"`
+	Scale         float32      `json:"scale"`
+	Labels        []string     `json:"labels"`
+	Targets       []targetInfo `json:"targets"`
 }
 type payload struct {
 	metadata any
@@ -94,7 +150,15 @@ func addTool[In any](server *mcp.Server, name, description string, fn func(conte
 	mcp.AddTool(server, &mcp.Tool{Name: name, Description: description}, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
 		p, err := fn(ctx, in)
 		if err != nil {
-			return nil, nil, err
+			var target *targetError
+			if !errors.As(err, &target) {
+				return nil, nil, err
+			}
+			b, marshalErr := json.Marshal(target)
+			if marshalErr != nil {
+				return nil, nil, fmt.Errorf("encode targeting error: %w", marshalErr)
+			}
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}, StructuredContent: target}, nil, nil
 		}
 		text, err := json.Marshal(p.metadata)
 		if err != nil {
@@ -141,7 +205,7 @@ func (s *service) registerTools(server *mcp.Server) {
 		v, err := s.call(ctx, "", func(*session) (any, error) {
 			list := make([]sessionInfo, 0, len(s.sessions))
 			for _, x := range s.sessions {
-				info := sessionInfo{ID: x.id, Name: x.fixture.Name, Width: x.fixture.Width, Height: x.fixture.Height, Scale: x.fixture.Scale, Operations: []string{"mygo_screenshot", "mygo_click", "mygo_type", "mygo_key", "mygo_advance"}}
+				info := sessionInfo{ID: x.id, Name: x.fixture.Name, Width: x.fixture.Width, Height: x.fixture.Height, Scale: x.fixture.Scale, Operations: []string{"mygo_screenshot", "mygo_inspect", "mygo_click", "mygo_click_label", "mygo_scroll", "mygo_type", "mygo_key", "mygo_advance", "mygo_wait_text"}}
 				if x.failed != nil {
 					info.Failed = x.failed.Error()
 					info.Operations = []string{}
@@ -157,60 +221,44 @@ func (s *service) registerTools(server *mcp.Server) {
 		}
 		return v.(payload), nil
 	})
-	addTool(server, "mygo_screenshot", "Render current headless state as PNG; supersedes the previous screenshot ID.", func(ctx context.Context, in sessionInput) (payload, error) {
-		return s.operation(ctx, in.SessionID, validSessionInput, false, func(x *session) (payload, error) {
-			x.shot = nil
-			x.tester.Frame()
-			im := x.tester.Image()
-			if im == nil {
-				return payload{}, errors.New("tester returned no image")
-			}
-			bounds := im.Bounds()
-			w, h := bounds.Dx(), bounds.Dy()
-			if w <= 0 || h <= 0 || w > maxDimension || h > maxDimension || w*h > maxPixels {
-				return payload{}, errors.New("unexpected image geometry")
-			}
-			var b pngBuffer
-			if err := png.Encode(&b, im); err != nil {
-				return payload{}, fmt.Errorf("encode screenshot: %w", err)
-			}
-			x.sequence++
-			x.shot = &screenshot{id: fmt.Sprintf("%s-shot-%d", x.id, x.sequence), width: w, height: h}
-			info := screenshotInfo{status: currentStatus(x, false), ScreenshotID: x.shot.id, ImageWidth: w, ImageHeight: h, ContentWidth: x.fixture.Width, ContentHeight: x.fixture.Height, Scale: x.fixture.Scale}
-			return payload{metadata: info, png: b.Bytes()}, nil
-		})
-	})
-	addTool(server, "mygo_click", "Deliver one left click in pixels of the latest screenshot. Requires a new screenshot after any mutation.", func(ctx context.Context, in clickInput) (payload, error) {
+	s.registerObservationTools(server)
+	s.registerScrollAndWaitTools(server)
+	addTool(server, "mygo_click", "Deliver one left click in image pixels of the latest observation. Optionally return the resulting screenshot. Requires a fresh observation after any mutation.", func(ctx context.Context, in clickRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
-			shot := x.shot
-			if shot == nil || shot.id != in.ScreenshotID {
-				return payload{}, errors.New("missing, wrong-session, or stale screenshot_id")
+			cx, cy, err := pointTarget(x, in)
+			if err != nil {
+				return payload{}, err
 			}
-			if in.X >= float64(shot.width) || in.Y >= float64(shot.height) {
-				return payload{}, errors.New("click outside screenshot")
-			}
-			dipX := in.X * float64(x.fixture.Width) / float64(shot.width)
-			dipY := in.Y * float64(x.fixture.Height) / float64(shot.height)
 			x.shot = nil
-			// Keep valid near-edge pixels inside content after float32 rounding.
-			x.tester.ClickAt(min(float32(dipX), math.Nextafter32(float32(x.fixture.Width), 0)), min(float32(dipY), math.Nextafter32(float32(x.fixture.Height), 0)))
-			return payload{metadata: currentStatus(x, true)}, nil
+			x.tester.ClickAt(cx, cy)
+			return finishAction(x, in.Screenshot)
 		})
 	})
-	addTool(server, "mygo_type", "Deliver committed Unicode to the focused control. Delivery does not imply acceptance; inspect a screenshot.", func(ctx context.Context, in typeInput) (payload, error) {
+	addTool(server, "mygo_click_label", "Click a uniquely matching exact text or MyGo Label from the latest observation. Optionally return the resulting screenshot. Delivery does not imply acceptance.", func(ctx context.Context, in clickLabelRequest) (payload, error) {
+		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
+			cx, cy, err := labelTarget(x, in)
+			if err != nil {
+				return payload{}, err
+			}
+			x.shot = nil
+			x.tester.ClickAt(cx, cy)
+			return finishAction(x, in.Screenshot)
+		})
+	})
+	addTool(server, "mygo_type", "Deliver committed Unicode to the focused control. Delivery does not imply acceptance. Optionally return the resulting screenshot.", func(ctx context.Context, in typeRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, true, func(x *session) (payload, error) {
 			x.tester.Type(in.Text)
-			return payload{metadata: currentStatus(x, true)}, nil
+			return finishAction(x, in.Screenshot)
 		})
 	})
-	addTool(server, "mygo_key", "Deliver a complete key chord; printable keys do not insert text. Modifiers: shift, control, alt, meta, primary.", func(ctx context.Context, in keyInput) (payload, error) {
-		return s.operation(ctx, in.SessionID, func() error { _, _, err := parseKey(in); return err }, true, func(x *session) (payload, error) {
-			key, mods, err := parseKey(in)
+	addTool(server, "mygo_key", "Deliver a complete key chord; printable keys do not insert text. Modifiers: shift, control, alt, meta, primary. Optionally return the resulting screenshot.", func(ctx context.Context, in keyRequest) (payload, error) {
+		return s.operation(ctx, in.SessionID, func() error { _, _, err := parseKey(in.keyInput); return err }, true, func(x *session) (payload, error) {
+			key, mods, err := parseKey(in.keyInput)
 			if err != nil {
 				return payload{}, err
 			}
 			x.tester.Key(mods, key)
-			return payload{metadata: currentStatus(x, true)}, nil
+			return finishAction(x, in.Screenshot)
 		})
 	})
 	addTool(server, "mygo_advance", "Advance frozen tester time by 0..1000 integer milliseconds; does not wait for external services or imply idleness.", func(ctx context.Context, in advanceInput) (payload, error) {
@@ -219,19 +267,6 @@ func (s *service) registerTools(server *mcp.Server) {
 			return payload{metadata: currentStatus(x, true)}, nil
 		})
 	})
-}
-
-type pngBuffer struct{ bytes.Buffer }
-
-func (b *pngBuffer) Write(p []byte) (int, error) {
-	if len(p) > maxPNGBytes-b.Len() {
-		return 0, errors.New("PNG exceeds 16 MiB response limit")
-	}
-	n, err := b.Buffer.Write(p)
-	if err != nil {
-		return n, fmt.Errorf("buffer PNG: %w", err)
-	}
-	return n, nil
 }
 
 var keys = map[string]ui.Key{

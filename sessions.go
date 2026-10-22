@@ -37,6 +37,7 @@ type Fixture struct {
 type screenshot struct {
 	id            string
 	width, height int
+	targets       []targetInfo
 }
 
 type session struct {

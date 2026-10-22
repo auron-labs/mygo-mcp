@@ -114,25 +114,134 @@ also contain SDK `ImageContent` with `image/png`, not a custom base64 envelope.
 | Tool | Other inputs | Behavior |
 | --- | --- | --- |
 | `mygo_sessions` | none | IDs, names, DIP dimensions, scale, available operations and fixture failures |
-| `mygo_screenshot` | none | `Frame()` then PNG; screenshot ID, actual pixel/content dimensions, scale, simulated time, `frame_pending` |
-| `mygo_click` | `screenshot_id`, `x`, `y` | One complete left click in that screenshot's pixels |
-| `mygo_type` | `text` | Commit valid UTF-8 through normal editable-focus/selection handling |
-| `mygo_key` | `key`, optional `modifiers` array | Complete press/release chord |
+| `mygo_inspect` | none | `Frame()` then texts/labels, match counts, unique match bounds in DIPs, dimensions, simulated time, `frame_pending`, and a fresh `observation_id`; no PNG |
+| `mygo_screenshot` | none | Same observation metadata plus PNG and a legacy `screenshot_id` alias |
+| `mygo_click` | `observation_id` or `screenshot_id`, `x`, `y`, optional `screenshot` | One complete left click in the observation's image pixels |
+| `mygo_click_label` | `observation_id` or `screenshot_id`, `label`, optional `screenshot` | Click the center of one exact text or explicit MyGo label |
+| `mygo_scroll` | `observation_id` or `screenshot_id`, `x`, `y`, `delta_x`, `delta_y`, optional `screenshot` | Immediate scrolling at an image pixel point, with deltas in DIPs |
+| `mygo_type` | `text`, optional `screenshot` | Commit valid UTF-8 through normal editable-focus/selection handling |
+| `mygo_key` | `key`, optional `modifiers` array and `screenshot` | Complete press/release chord |
 | `mygo_advance` | integer `milliseconds` | Advance simulated time by 0–1000 ms |
+| `mygo_wait_text` | `text`, integer `timeout_ms`, optional `screenshot` | Check rendered texts/labels for a substring, advancing simulated time up to the requested limit; return `matched`, `advanced_ms`, and a fresh observation |
 
-### Screenshot coordinates
+### Inspect without a PNG
 
-Only the **latest** screenshot ID is valid for its fixture. A new screenshot
-supersedes the old one. Every dispatched click/type/key/advance invalidates it,
-including no-op inputs and actions whose caller cancelled after dispatch. Take a
-fresh screenshot before another click. Invalid requests do not invalidate it.
-Wrong-session IDs, stale IDs, non-finite and out-of-image points are rejected.
+Call `mygo_inspect` with `{"session_id":"<session>"}` to observe a fixture without
+encoding or transferring a screenshot. Use its `observation_id` to click or
+scroll. `labels` lists MyGo's texts/labels in frame order, including duplicates.
+`targets` groups these by exact label and returns `matches`, `bounds` for unique
+matches, and `center_in_content`. Bounds contain `x`, `y`, `width`, and `height`
+in DIPs. They can describe text rather than the full control, and clipping can
+produce zero-size bounds. Bounds are omitted for duplicates because MyGo's
+public `Find` API exposes only the first match, and for non-finite geometry.
+
+Inspection renders the view and returns actual image dimensions even though it
+does not encode a PNG. It does not advance time. For visual verification, use
+`mygo_screenshot` or request a screenshot with an action.
+
+### Click by label
+
+Inspect or take a screenshot, then use an entry from its `labels` metadata:
+
+```json
+{"session_id":"<session>","observation_id":"<latest observation>","label":"Edit"}
+```
+
+Pass this to `mygo_click_label`. Matching is exact and case-sensitive. Missing,
+duplicate, empty, and out-of-content targets return tool errors without consuming
+the observation. For controls without useful visible text, give the existing view
+an explicit label, for example `ui.TextInput(c, &text).Label("Message")`.
+The demo uses this label for its editable field.
+
+Labels come from MyGo's last rendered frame, including ordinary text and possibly
+offscreen elements; they are not a list of enabled, unobscured buttons. A click
+uses normal pointer dispatch at the matched element's center. Delivery does not
+guarantee the intended handler ran, so verify the next observation. For ambiguous
+labels, use coordinate clicks or give controls distinct labels. Label clicks use
+DIPs internally and work independently of screenshot scale.
+
+### Observation IDs and screenshot coordinates
+
+Only the **latest** observation ID is valid for its fixture. Inspection,
+screenshots, and text waits each supersede the previous observation. Screenshots
+return identical `observation_id` and `screenshot_id` values; either input name
+works for clicks and scrolling. If both are supplied, they must agree.
+
+Every dispatched coordinate/label click, scroll, type, key, or advance invalidates
+the previous observation, including no-op inputs and actions whose caller
+cancelled after dispatch. Inspect or take a fresh screenshot before another
+targeted action, or use the fresh observation returned by `screenshot: true`.
+Invalid requests do not invalidate it. Wrong-session IDs, stale IDs, non-finite
+and out-of-image points are rejected.
 `0 <= x < image_width` and `0 <= y < image_height` are required.
 
 Conversion uses actual PNG dimensions, including scale rounding:
 `dip_x = x * content_width / image_width` (likewise Y). Never send desktop-global
 coordinates or assume one pixel per DIP. Geometry stays fixed for the run; there
 are no resize/scale tools.
+
+### Return a screenshot with an action
+
+Set `screenshot: true` on a click, label click, type, key, or scroll request to
+receive the resulting PNG and observation metadata, with `delivered: true`, in
+the same call. For example, pass this to `mygo_click_label`:
+
+```json
+{"session_id":"<session>","observation_id":"<latest observation>","label":"Edit","screenshot":true}
+```
+
+The new observation can target the next action. The default is `false`, returning
+only delivery status for these input tools. Capture does not advance time or
+wait for application idleness. If PNG capture fails after delivery, the error
+states that input was delivered; do not replay it.
+
+### Recover from targeting errors
+
+Targeting failures are ordinary MCP tool errors (`isError: true`) with JSON in
+both text content and structured content. `code` is one of `not_found`,
+`ambiguous`, `offscreen`, `invalid_geometry`, `stale_observation`,
+`invalid_observation`, or `out_of_bounds`. `message` describes recovery. Label
+lookup errors include `target` with the label, match count, and bounds when
+available. Other validation failures remain ordinary SDK tool errors.
+
+For `stale_observation`, inspect again. For `ambiguous`, use distinct labels or
+coordinates. For `offscreen`, scroll and inspect again. These errors do not
+consume the current valid observation.
+
+### Scroll to controls
+
+Pass an image pixel point inside the scroll container and bounded DIP deltas to
+`mygo_scroll`:
+
+```json
+{"session_id":"<session>","observation_id":"<latest observation>","x":100,"y":80,"delta_x":0,"delta_y":200,"screenshot":true}
+```
+
+Positive `delta_y` scrolls down; negative scrolls up. Each delta must be finite
+and between -4096 and 4096 DIPs. Scrolling uses MyGo's immediate touchpad-style
+input, so it does not require a clock advance to finish a wheel animation. It
+uses normal pointer routing; verify that the intended container scrolled.
+
+### Wait for rendered text
+
+Pass this to `mygo_wait_text` after an action that schedules a visible update:
+
+```json
+{"session_id":"<session>","text":"Ready","timeout_ms":500}
+```
+
+The tool renders once and checks for a case-sensitive substring in MyGo's
+texts/labels. If absent, it advances simulated time in steps of at most 10 ms,
+checking after each step until a match or the requested limit. `timeout_ms`
+must be an integer from 0 through 1000. The tool never advances beyond that
+budget; an existing match returns immediately with `advanced_ms: 0`.
+
+Results include `matched`, the actual `advanced_ms`, and a fresh observation.
+A timeout returns `matched: false`, not a tool error. Set `screenshot: true`
+to include the final PNG. Matching does not prove visibility: offscreen labels
+can match, and explicit labels can replace a control's displayed text in MyGo's
+text queries. This advances the tester clock, not wall-clock services,
+networking, or background goroutines, and does not guarantee application idleness.
 
 ### Input, clock and completion
 
@@ -152,7 +261,8 @@ elsewhere). For select-all: `{"key":"a","modifiers":["primary"]}`.
 Tester time starts at construction and stays frozen until explicit advances.
 Wall-clock sleeps do not advance it. Consecutive clicks at the same frozen time
 may count as double-clicks; explicitly advance time when separated clicks matter.
-No tool secretly advances time. Advances reject negative, fractional, non-finite,
+Only `mygo_advance` and `mygo_wait_text` advance time, within their explicit budgets.
+Advances reject negative, fractional, non-finite,
 overflowing or excessive durations before conversion to `time.Duration`.
 
 Completion means the public tester method returned, **not** application idleness.
@@ -177,8 +287,9 @@ potentially hanging code; such code can also prevent shutdown from completing.
 - At most 4,194,304 pixels per fixture and 16,777,216 across fixtures, budgeting
   scale-1 construction **and** configured scale before allocating testers.
 - 32 queued operations across all fixtures; a full queue returns a tool error.
-- 65,536 UTF-8 bytes per text input; at most five modifiers per chord.
-- 1000 ms per advance; split longer intervals into explicit calls.
+- 65,536 UTF-8 bytes per text, label, or wait query; at most five modifiers per chord.
+- 1000 ms per advance or wait; at most 100 clock steps per wait.
+- Scroll deltas between -4096 and 4096 DIPs per axis.
 - 16 MiB of PNG bytes per screenshot (about 22 MiB after SDK base64/JSON encoding).
   Encoding is bounded while writing and errors propagate.
 - 1 MiB HTTP request bodies, valid UTF-8; 16 KiB headers, 5-second header and
@@ -239,7 +350,7 @@ No live-window discovery/control, OS automation, desktop permissions, OS menus o
 dialogs, actual window focus, system webviews or mixed native/webview rendering.
 Opening a desktop window does not register another fixture. Headless screenshots
 are software-rendered and do not claim GPU framebuffer/font/environment parity.
-No semantic selectors, assertions, recordings, arbitrary evaluation, shell tools,
+No role/CSS selectors, assertions, recordings, arbitrary evaluation, shell tools,
 remote fixture mutation/reset, launcher/stdio bridge, public hosting or automatic
 project rewriting. Views requiring live platform services need explicit harness
 adaptation or remain unsupported. The old fork PR is neither a dependency nor a
