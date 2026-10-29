@@ -95,7 +95,9 @@ The tools support:
 Screenshots contain PNG images. Label clicks use exact text or explicit MyGo
 labels; coordinate clicks use image pixels. Actions invalidate the current
 observation, so inspect again before targeting another action, or request
-`screenshot: true` with the action to get the next image and observation ID.
+`inspect: true` with the action for resulting targets and a fresh observation ID.
+Use `screenshot: true` when you also need an image (the `inspect` option is
+available in the development checkout).
 
 Give your agent the [agent guide](docs/AGENT_GUIDE.md) for tool inputs, a working
 loop, observation rules, error recovery, timing, and integration details.
@@ -141,11 +143,11 @@ also contain SDK `ImageContent` with `image/png`, not a custom base64 envelope.
 | `mygo_sessions` | none | IDs, names, DIP dimensions, scale, available operations and fixture failures |
 | `mygo_inspect` | none | `Frame()` then texts/labels, match counts, unique match bounds in DIPs, dimensions, simulated time, `frame_pending`, and a fresh `observation_id`; no PNG |
 | `mygo_screenshot` | none | Same observation metadata plus PNG and a legacy `screenshot_id` alias |
-| `mygo_click` | `observation_id` or `screenshot_id`, `x`, `y`, optional `screenshot` | One complete left click in the observation's image pixels |
-| `mygo_click_label` | `observation_id` or `screenshot_id`, `label`, optional `screenshot` | Click the center of one exact text or explicit MyGo label |
-| `mygo_scroll` | `observation_id` or `screenshot_id`, `x`, `y`, `delta_x`, `delta_y`, optional `screenshot` | Immediate scrolling at an image pixel point, with deltas in DIPs |
-| `mygo_type` | `text`, optional `screenshot` | Commit valid UTF-8 through normal editable-focus/selection handling |
-| `mygo_key` | `key`, optional `modifiers` array and `screenshot` | Complete press/release chord |
+| `mygo_click` | `observation_id` or `screenshot_id`, `x`, `y`, optional `inspect` and `screenshot` | One complete left click in the observation's image pixels |
+| `mygo_click_label` | `observation_id` or `screenshot_id`, `label`, optional `inspect` and `screenshot` | Click the center of one exact text or explicit MyGo label |
+| `mygo_scroll` | `observation_id` or `screenshot_id`, `x`, `y`, `delta_x`, `delta_y`, optional `inspect` and `screenshot` | Immediate scrolling at an image pixel point, with deltas in DIPs |
+| `mygo_type` | `text`, optional `inspect` and `screenshot` | Commit valid UTF-8 through normal editable-focus/selection handling |
+| `mygo_key` | `key`, optional `modifiers` array, `inspect`, and `screenshot` | Complete press/release chord |
 | `mygo_advance` | integer `milliseconds` | Advance simulated time by 0–1000 ms |
 | `mygo_wait_text` | `text`, integer `timeout_ms`, optional `screenshot` | Check rendered texts/labels for a substring, advancing simulated time up to the requested limit; return `matched`, `advanced_ms`, and a fresh observation |
 
@@ -204,6 +206,25 @@ Conversion uses actual PNG dimensions, including scale rounding:
 `dip_x = x * content_width / image_width` (likewise Y). Never send desktop-global
 coordinates or assume one pixel per DIP. Geometry stays fixed for the run; there
 are no resize/scale tools.
+
+### Inspect after an action without a PNG
+
+In the development checkout, set `inspect: true` on `mygo_click`,
+`mygo_click_label`, `mygo_type`, `mygo_key`, or `mygo_scroll` to receive
+the resulting labels, targets, dimensions, and a fresh `observation_id` in
+the same call, without a PNG:
+
+```json
+{"session_id":"<session>","observation_id":"<latest observation>","label":"Edit","inspect":true}
+```
+
+Pass this to `mygo_click_label`, then use the returned observation ID for the
+next targeted action. This avoids a separate inspection call when visual
+verification is unnecessary. Results include `delivered: true`; verify labels
+and targets to check the outcome. Inspection does not advance simulated time.
+If both `inspect` and `screenshot` are true, the result also includes a PNG.
+Both default to false, returning delivery status only. If observation capture
+fails after input, the error says input was delivered; do not replay it.
 
 ### Return a screenshot with an action
 

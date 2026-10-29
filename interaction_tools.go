@@ -49,7 +49,7 @@ type waitTextInfo struct {
 }
 
 func (s *service) registerScrollAndWaitTools(server *mcp.Server) {
-	addTool(server, "mygo_scroll", "Deliver immediate touchpad-style scrolling at an observation image pixel point; delta_x/delta_y are DIPs. Requires a fresh observation; optionally return the resulting screenshot. Does not advance time.", func(ctx context.Context, in scrollInput) (payload, error) {
+	addTool(server, "mygo_scroll", "Deliver immediate touchpad-style scrolling at an observation image pixel point; delta_x/delta_y are DIPs. Requires a fresh observation; set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG. Does not advance time.", func(ctx context.Context, in scrollInput) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
 			cx, cy, err := pointTarget(x, in.clickRequest)
 			if err != nil {
@@ -57,7 +57,7 @@ func (s *service) registerScrollAndWaitTools(server *mcp.Server) {
 			}
 			x.shot = nil
 			x.tester.Scroll(cx, cy, float32(in.DeltaX), float32(in.DeltaY))
-			return finishAction(x, in.Screenshot)
+			return finishAction(x, in.Inspect, in.Screenshot)
 		})
 	})
 	addTool(server, "mygo_wait_text", "Check a case-sensitive substring in rendered texts/labels, advancing simulated time in steps of at most 10 ms up to timeout_ms (0..1000). Returns matched, advanced_ms and a fresh observation; timeout is matched=false. Does not wait for external services or guarantee visibility.", func(ctx context.Context, in waitTextInput) (payload, error) {

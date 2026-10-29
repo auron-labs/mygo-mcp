@@ -26,6 +26,7 @@ type clickInput struct {
 type clickRequest struct {
 	clickInput
 	ObservationID string `json:"observation_id,omitempty" jsonschema:"Latest inspection or screenshot observation ID; alternatively supply screenshot_id"`
+	Inspect       bool   `json:"inspect,omitempty" jsonschema:"Return resulting labels, targets and a fresh observation without a PNG; screenshot also includes this metadata"`
 	Screenshot    bool   `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
 }
 
@@ -48,6 +49,7 @@ type typeInput struct {
 }
 type typeRequest struct {
 	typeInput
+	Inspect    bool `json:"inspect,omitempty" jsonschema:"Return resulting labels, targets and a fresh observation without a PNG; screenshot also includes this metadata"`
 	Screenshot bool `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
 }
 type clickLabelInput struct {
@@ -58,6 +60,7 @@ type clickLabelInput struct {
 type clickLabelRequest struct {
 	clickLabelInput
 	ObservationID string `json:"observation_id,omitempty" jsonschema:"Latest inspection or screenshot observation ID; alternatively supply screenshot_id"`
+	Inspect       bool   `json:"inspect,omitempty" jsonschema:"Return resulting labels, targets and a fresh observation without a PNG; screenshot also includes this metadata"`
 	Screenshot    bool   `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
 }
 
@@ -85,6 +88,7 @@ type keyInput struct {
 }
 type keyRequest struct {
 	keyInput
+	Inspect    bool `json:"inspect,omitempty" jsonschema:"Return resulting labels, targets and a fresh observation without a PNG; screenshot also includes this metadata"`
 	Screenshot bool `json:"screenshot,omitempty" jsonschema:"Return the resulting PNG and a fresh observation after delivery"`
 }
 type advanceInput struct {
@@ -223,7 +227,7 @@ func (s *service) registerTools(server *mcp.Server) {
 	})
 	s.registerObservationTools(server)
 	s.registerScrollAndWaitTools(server)
-	addTool(server, "mygo_click", "Deliver one left click in image pixels of the latest observation. Optionally return the resulting screenshot. Requires a fresh observation after any mutation.", func(ctx context.Context, in clickRequest) (payload, error) {
+	addTool(server, "mygo_click", "Deliver one left click in image pixels of the latest observation. Set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG. Requires a fresh observation after any mutation.", func(ctx context.Context, in clickRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
 			cx, cy, err := pointTarget(x, in)
 			if err != nil {
@@ -231,10 +235,10 @@ func (s *service) registerTools(server *mcp.Server) {
 			}
 			x.shot = nil
 			x.tester.ClickAt(cx, cy)
-			return finishAction(x, in.Screenshot)
+			return finishAction(x, in.Inspect, in.Screenshot)
 		})
 	})
-	addTool(server, "mygo_click_label", "Click a uniquely matching exact text or MyGo Label from the latest observation. Optionally return the resulting screenshot. Delivery does not imply acceptance.", func(ctx context.Context, in clickLabelRequest) (payload, error) {
+	addTool(server, "mygo_click_label", "Click a uniquely matching exact text or MyGo Label from the latest observation. Set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG. Delivery does not imply acceptance.", func(ctx context.Context, in clickLabelRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
 			cx, cy, err := labelTarget(x, in)
 			if err != nil {
@@ -242,23 +246,23 @@ func (s *service) registerTools(server *mcp.Server) {
 			}
 			x.shot = nil
 			x.tester.ClickAt(cx, cy)
-			return finishAction(x, in.Screenshot)
+			return finishAction(x, in.Inspect, in.Screenshot)
 		})
 	})
-	addTool(server, "mygo_type", "Deliver committed Unicode to the focused control. Delivery does not imply acceptance. Optionally return the resulting screenshot.", func(ctx context.Context, in typeRequest) (payload, error) {
+	addTool(server, "mygo_type", "Deliver committed Unicode to the focused control. Delivery does not imply acceptance. Set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG.", func(ctx context.Context, in typeRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, true, func(x *session) (payload, error) {
 			x.tester.Type(in.Text)
-			return finishAction(x, in.Screenshot)
+			return finishAction(x, in.Inspect, in.Screenshot)
 		})
 	})
-	addTool(server, "mygo_key", "Deliver a complete key chord; printable keys do not insert text. Modifiers: shift, control, alt, meta, primary. Optionally return the resulting screenshot.", func(ctx context.Context, in keyRequest) (payload, error) {
+	addTool(server, "mygo_key", "Deliver a complete key chord; printable keys do not insert text. Modifiers: shift, control, alt, meta, primary. Set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG.", func(ctx context.Context, in keyRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, func() error { _, _, err := parseKey(in.keyInput); return err }, true, func(x *session) (payload, error) {
 			key, mods, err := parseKey(in.keyInput)
 			if err != nil {
 				return payload{}, err
 			}
 			x.tester.Key(mods, key)
-			return finishAction(x, in.Screenshot)
+			return finishAction(x, in.Inspect, in.Screenshot)
 		})
 	})
 	addTool(server, "mygo_advance", "Advance frozen tester time by 0..1000 integer milliseconds; does not wait for external services or imply idleness.", func(ctx context.Context, in advanceInput) (payload, error) {

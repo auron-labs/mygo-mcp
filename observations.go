@@ -149,13 +149,13 @@ func captureObservation(x *session, withPNG, delivered bool) (payload, error) {
 	return payload{metadata: info, png: b.Bytes()}, nil
 }
 
-func finishAction(x *session, withPNG bool) (payload, error) {
-	if !withPNG {
+func finishAction(x *session, inspect, withPNG bool) (payload, error) {
+	if !inspect && !withPNG {
 		return payload{metadata: currentStatus(x, true)}, nil
 	}
-	p, err := captureObservation(x, true, true)
+	p, err := captureObservation(x, withPNG, true)
 	if err != nil {
-		return payload{}, fmt.Errorf("input delivered; screenshot failed, do not replay input: %w", err)
+		return payload{}, fmt.Errorf("input delivered; observation failed, do not replay input: %w", err)
 	}
 	return p, nil
 }

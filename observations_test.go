@@ -91,3 +91,47 @@ func TestInspectAndActionScreenshots(t *testing.T) {
 		t.Fatal("inspection and action capture advanced time")
 	}
 }
+
+func TestActionInspectionsChainWithoutPNG(t *testing.T) {
+	s := testService(t, demoFixture("one", 1.25))
+	cs := testClient(t, s)
+	id := s.sessions[0].id
+	obs := inspect(t, cs, id)
+	start := obs.Time
+	for _, step := range []struct {
+		tool string
+		args map[string]any
+	}{
+		{"mygo_click_label", map[string]any{"label": "Edit"}},
+		{"mygo_click", map[string]any{"x": 125, "y": 25}},
+		{"mygo_type", map[string]any{"text": "Hello"}},
+		{"mygo_key", map[string]any{"key": "enter", "modifiers": []string{"primary"}}},
+		{"mygo_scroll", map[string]any{"x": 125, "y": 25, "delta_x": 0, "delta_y": 0}},
+	} {
+		t.Run(step.tool, func(t *testing.T) {
+			previous := obs.ObservationID
+			step.args["session_id"] = id
+			if step.tool != "mygo_type" && step.tool != "mygo_key" {
+				step.args["observation_id"] = previous
+			}
+			step.args["inspect"] = true
+			var next screenshotInfo
+			r := callTool(t, cs, step.tool, step.args, &next)
+			if !next.Delivered || next.ObservationID == "" || next.ObservationID == previous || next.ScreenshotID != "" || len(r.Content) != 1 || len(next.Targets) == 0 || !next.Time.Equal(start) {
+				t.Fatal("expected resulting targets and fresh observation without PNG or clock advance", next)
+			}
+			targetingError(t, cs, "mygo_click_label", map[string]any{"session_id": id, "observation_id": previous, "label": "Message"}, "stale_observation")
+			obs = next
+		})
+	}
+	found := false
+	for _, label := range obs.Labels {
+		found = found || label == "Submitted: Hello"
+	}
+	if !found {
+		t.Fatal("action inspection did not return the resulting submitted text", obs.Labels)
+	}
+	var shot screenshotInfo
+	r := callTool(t, cs, "mygo_click_label", map[string]any{"session_id": id, "observation_id": obs.ObservationID, "label": "Message", "inspect": true, "screenshot": true}, &shot)
+	checkActionShot(t, r, shot)
+}
