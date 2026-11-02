@@ -25,13 +25,13 @@ Use independent seeded state and test services; ordinary application handlers ru
 
 An opt-in Go package for exercising **isolated, headless MyGo views** using MCP.
 It does not discover or control desktop windows. Importing it starts nothing.
-MyGo is pinned to unmodified upstream commit
-`3dfa48145e523d029ea6959f6e129915eb16499d`; no fork, patch, internal imports,
+MyGo is pinned to unmodified upstream v0.7.4 (commit
+`9bd34e1eb9525d9a1fe698aadc964c49c8ff8e7e`); no fork, patch, internal imports,
 module replacement, reflection, or unsafe access is used.
 
 ## Run the example
 
-Requires Go 1.27.1 or later (the pinned MyGo requirement). Go's automatic
+Requires Go 1.27.3 or later (the pinned MyGo requirement). Go's automatic
 toolchain selection can download it. No desktop session or CGO is required on Linux.
 
 ```sh
@@ -362,7 +362,7 @@ messages, such as `fix: reject stale screenshots`.
 CI runs on pull requests and pushes to `main`: the module's minimum Go version
 owns tests/builds, while mise supplies the pinned lint toolchain. The Linux checks
 include race detection and CGO-disabled tests/builds. Dependabot checks Go modules
-and GitHub Actions weekly; the verified MyGo commit is updated manually.
+and GitHub Actions weekly; the verified MyGo release is updated manually.
 
 The headless command is an example harness; integrate the library into your own
 development entry point.

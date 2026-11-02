@@ -9,7 +9,7 @@ discover or control running desktop applications.
 
 ## Install
 
-Requires **Go 1.27.1 or later** and a client that supports MCP Streamable HTTP.
+Requires **Go 1.27.3 or later** and a client that supports MCP Streamable HTTP.
 Linux headless operation requires neither a desktop session nor CGO.
 
 From your application's Go module:

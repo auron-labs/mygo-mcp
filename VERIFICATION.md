@@ -1,8 +1,61 @@
 # Delivery verification
 
+## MyGo upgrade — 2026-11-02
+
+Environment: Linux/amd64, Go 1.27.3. The clean baseline at
+`6733a2771c6701188da6d463ed78ef41fd8c8fe0` passed `go test ./...` before the upgrade.
+
+- MyGo now resolves to **v0.7.4**, upstream commit
+  `9bd34e1eb9525d9a1fe698aadc964c49c8ff8e7e`, from
+  `v0.5.6-0.20261020235557-3dfa48145e52`. The module's Go minimum is now 1.27.3,
+  matching upstream and the existing mise toolchain.
+- Verified the latest stable version on the [MyGo site](https://mygo.egoist.dev/)
+  and [GitHub release](https://github.com/egoist/mygo/releases/tag/v0.7.4).
+  Reviewed the intervening 0.6.x and 0.7.x changes.
+- There is no active `go.work`, module replacement, custom dependency patch,
+  pinned MyGo CLI, JavaScript runtime, generated binding, or Onevra dependency.
+  The library and example remain headless; no desktop renderer was introduced.
+- Existing MCP tools already support the relevant new native APIs.
+  `compatibility_test.go` exercises zoomed target bounds and pixel/label clicks
+  at fractional screenshot scale, plus exact-decimal typing, keyboard stepping,
+  and invalid-input preservation through real SDK HTTP calls. No production API
+  or demo change was needed.
+- Ready-to-show windows, webview scrolling, themed previews, destructive dialogs,
+  Markdown anchors, updater state, and custom scrollbar controls have no matching
+  flow in this headless library. The upstream live-app automation plugin also
+  falls outside its isolated-fixture contract.
+
+Checks passed:
+
+```sh
+go test -p 2 ./...
+go test -race -p 2 ./...
+CGO_ENABLED=0 go test -p 2 ./...
+go vet ./...
+go build -p 2 ./...
+CGO_ENABLED=0 go build -p 2 ./...
+go run github.com/egoist/mygo/cmd/mygo@v0.7.4 vet .
+go mod tidy -diff
+go mod verify
+golangci-lint run --fix=false ./...
+golangci-lint fmt --diff
+hk check --all --check --exclude '.upgrade-validation/**'
+actionlint
+```
+
+Checks used the pinned installed tools and task-local caches; the temporary cache
+directory was excluded from repository linting. An initial full `/tmp` prevented
+baseline compilation; relocating task caches resolved it. No application test
+regressions remain. Desktop/GPU, macOS and Windows checks were not run: this
+repository has no desktop application entry point or frontend build.
+
+## Initial delivery — 2026-10-21
+
+The following records describe the original delivery, before the upgrade above.
+
 Environment: Linux/amd64, Go 1.27.3; checked 2026-10-21.
 
-## Implemented plan
+### Implemented plan
 
 - Public-API proof in `public_api_test.go`: unmodified `ui.NewTester`, real
   navigation/input/selection replacement/button/shortcut handlers, Unicode,
@@ -23,7 +76,7 @@ Environment: Linux/amd64, Go 1.27.3; checked 2026-10-21.
 - Separate `examples/headless` harness sharing `internal/demo`'s application
   view; integration, client setup, limitations and limits in `README.md`.
 
-## Checks
+### Checks
 
 All of the following pass:
 
@@ -58,7 +111,7 @@ Dependency/import inspection confirms:
   view has no dependency on the opt-in MCP integration; only the separate harness
   imports the root server package.
 
-## Not checked / residual risk
+### Not checked / residual risk
 
 No GUI, hardware, cross-platform desktop matrix, external host application's
 platform-service integration or size benchmark was run; these are not headless
