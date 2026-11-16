@@ -209,7 +209,7 @@ func (s *service) registerTools(server *mcp.Server) {
 		v, err := s.call(ctx, "", func(*session) (any, error) {
 			list := make([]sessionInfo, 0, len(s.sessions))
 			for _, x := range s.sessions {
-				info := sessionInfo{ID: x.id, Name: x.fixture.Name, Width: x.fixture.Width, Height: x.fixture.Height, Scale: x.fixture.Scale, Operations: []string{"mygo_screenshot", "mygo_inspect", "mygo_click", "mygo_click_label", "mygo_scroll", "mygo_type", "mygo_key", "mygo_advance", "mygo_wait_text"}}
+				info := sessionInfo{ID: x.id, Name: x.fixture.Name, Width: x.fixture.Width, Height: x.fixture.Height, Scale: x.fixture.Scale, Operations: []string{"mygo_screenshot", "mygo_inspect", "mygo_click", "mygo_click_label", "mygo_scroll", "mygo_type", "mygo_key", "mygo_advance", "mygo_wait_text", "mygo_access"}}
 				if x.failed != nil {
 					info.Failed = x.failed.Error()
 					info.Operations = []string{}
@@ -227,6 +227,7 @@ func (s *service) registerTools(server *mcp.Server) {
 	})
 	s.registerObservationTools(server)
 	s.registerScrollAndWaitTools(server)
+	s.registerAccessTools(server)
 	addTool(server, "mygo_click", "Deliver one left click in image pixels of the latest observation. Set inspect=true for resulting targets without a PNG, or screenshot=true to include a PNG. Requires a fresh observation after any mutation.", func(ctx context.Context, in clickRequest) (payload, error) {
 		return s.operation(ctx, in.SessionID, in.validate, false, func(x *session) (payload, error) {
 			cx, cy, err := pointTarget(x, in)
