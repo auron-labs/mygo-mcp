@@ -3,7 +3,7 @@ module github.com/auron-labs/mygo-mcp
 go 1.27.3
 
 require (
-	github.com/egoist/mygo v0.7.4
+	github.com/egoist/mygo v0.9.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
 
