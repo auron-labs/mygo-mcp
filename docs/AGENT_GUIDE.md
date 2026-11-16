@@ -9,7 +9,7 @@ The tool schemas exposed by the running harness are authoritative for its versio
 1. Start the project's dedicated headless harness and connect an MCP client to
    its loopback `/mcp` endpoint. Importing the package alone starts no server.
 2. Call `mygo_sessions` and choose the fixture by name; retain its returned ID.
-3. Call `mygo_inspect` for labels and geometry, or `mygo_screenshot` when visual
+3. Call `mygo_inspect` for labels and geometry (`mygo_access` for roles, names and states), or `mygo_screenshot` when visual
    context matters. Retain the latest observation ID for that fixture.
 4. Prefer `mygo_click_label` for a unique exact label. Use pixel coordinates from
    the current image for unlabeled or ambiguous controls. In the development
@@ -144,6 +144,7 @@ also contain SDK `ImageContent` with `image/png`, not a custom base64 envelope.
 | `mygo_key` | `key`, optional `modifiers` array, `inspect`, and `screenshot` | Complete press/release chord |
 | `mygo_advance` | integer `milliseconds` | Advance simulated time by 0–1000 ms |
 | `mygo_wait_text` | `text`, integer `timeout_ms`, optional `screenshot` | Check rendered texts/labels for a substring, advancing simulated time up to the requested limit; return `matched`, `advanced_ms`, and a fresh observation |
+| `mygo_access` | optional exact `role` and `name` filters | Read the accessibility tree (what a screen reader sees): per element `role` (snake_case, e.g. `button`, `text_field`), `name`, `value`, `description`, `placeholder`, `states` (`checked`, `disabled`, `focused`, ...), `bounds` in DIPs, and slider range; at most 500 elements, `matches` and `truncated`. Read-only: does not issue an observation or invalidate the current one |
 
 ### Inspect without a PNG
 

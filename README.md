@@ -92,7 +92,7 @@ Ask your connected agent to list fixtures, inspect the Greeting fixture, focus
 the Name field, type a name, click Greet, and verify the greeting in a screenshot.
 The tools support:
 
-- **Discovery and inspection:** `mygo_sessions`, `mygo_inspect`, `mygo_screenshot`.
+- **Discovery and inspection:** `mygo_sessions`, `mygo_inspect`, `mygo_screenshot`, `mygo_access`.
 - **Interaction:** `mygo_click_label`, `mygo_click`, `mygo_type`, `mygo_key`, `mygo_scroll`.
 - **Simulated time:** `mygo_advance`, `mygo_wait_text`.
 
@@ -154,6 +154,7 @@ also contain SDK `ImageContent` with `image/png`, not a custom base64 envelope.
 | `mygo_key` | `key`, optional `modifiers` array, `inspect`, and `screenshot` | Complete press/release chord |
 | `mygo_advance` | integer `milliseconds` | Advance simulated time by 0–1000 ms |
 | `mygo_wait_text` | `text`, integer `timeout_ms`, optional `screenshot` | Check rendered texts/labels for a substring, advancing simulated time up to the requested limit; return `matched`, `advanced_ms`, and a fresh observation |
+| `mygo_access` | optional exact `role` and `name` filters | Read the accessibility tree (what a screen reader sees): per element `role` (snake_case, e.g. `button`, `text_field`), `name`, `value`, `description`, `placeholder`, `states` (`checked`, `disabled`, `focused`, ...), `bounds` in DIPs, and slider range; at most 500 elements, `matches` and `truncated`. Read-only: does not issue an observation or invalidate the current one |
 
 ### Inspect without a PNG
 
