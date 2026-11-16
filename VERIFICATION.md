@@ -1,5 +1,47 @@
 # Delivery verification
 
+## MyGo upgrade — 2026-11-16
+
+Environment: Linux/amd64, Go 1.27.3.
+
+- MyGo now resolves to **v0.9.2**, upstream commit
+  `25ce62f4d357cd6d29da04300e3fbc352d79daa4`, from v0.7.4
+  (`9bd34e1eb9525d9a1fe698aadc964c49c8ff8e7e`). Upstream's Go minimum is
+  unchanged (1.27.3). No `replace`, fork, patch or internal import. Verified as
+  the latest stable on the [GitHub releases](https://github.com/egoist/mygo/releases)
+  (the `native-sqlitecore` tag is not a release of the module).
+- Reviewed the v0.8.x and v0.9.x release notes and the `v0.7.4..v0.9.2` diff of
+  `ui` (Tester API in `ui/headless.go`, `ui/tester_access.go`). No breaking change
+  touched this library: it builds and all existing tests pass unchanged.
+- Implemented: no new MCP tool. Existing tools are unchanged.
+- New headless Tester capabilities left for a decision, not implemented:
+  `Access`/`AccessByRole`/`AccessAll` (accessibility tree; `ui.Role` has no
+  string form), `RightClick`/`ClickWith` modifiers, `Menu`/`ChooseMenuItem`,
+  `PressButton`/`ReleaseButton`, touch and pen (`TouchDown`, `UsePointer`),
+  `Pinch`, `Compose`, `Command`, `KeyRepeat`/`CodeDown`, `UseScreenReader`/`Alerts`/
+  `Announcements`, `SetWindowActive`/`SetWindowHidden`, `NewTesterWith`.
+- Out of scope: video/webview widgets, window/titlebar and vibrancy, global
+  shortcuts, Linux/Windows/macOS platform fixes, updater and packaging, and the
+  live-app automation plugin.
+- mise tools bumped: betterleaks 1.10.1, hk 2.12.0, pkl 0.33.0, tombi 1.11.2.
+  GitHub Actions majors (`jdx/mise-action` v5, `googleapis/release-please-action`
+  v5) are newer but were not bumped, since CI cannot be exercised here.
+
+Checks passed:
+
+```sh
+go mod verify && go mod tidy -diff
+go test -race -p 2 ./...
+CGO_ENABLED=0 go test -p 2 ./... && CGO_ENABLED=0 go build -p 2 ./...
+go vet ./... && go build -p 2 ./...
+go run github.com/egoist/mygo/cmd/mygo@v0.9.2 vet .
+mise run check
+```
+
+Smoke test: `go run ./examples/headless -listen 127.0.0.1:8080` answered real
+MCP HTTP calls to `mygo_sessions`, `mygo_inspect` and `mygo_click_label`
+(labels changed to `Message`, `Submit`, `Submitted:`).
+
 ## MyGo upgrade — 2026-11-02
 
 Environment: Linux/amd64, Go 1.27.3. The clean baseline at
