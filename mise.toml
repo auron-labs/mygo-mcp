@@ -1,13 +1,13 @@
 [tools]
 actionlint = "1.7.12"
-betterleaks = "1.9.0"
+betterleaks = "1.10.1"
 go = "1.27.3"
 golangci-lint = "2.15.0"
-hk = { version = "2.7.1", workflow = "release.yml" }
+hk = { version = "2.12.0", workflow = "release.yml" }
 "npm:@ls-lint/ls-lint" = "2.3.2"
-pkl = "0.32.1"
+pkl = "0.33.0"
 shellcheck = "0.11.0"
-tombi = "1.8.9"
+tombi = "1.11.2"
 
 [env]
 BETTERLEAKS_CONFIG = "{{ config_root }}/.betterleaks.toml"
