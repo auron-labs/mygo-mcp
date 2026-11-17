@@ -1,3 +1,17 @@
+**This repository is archived.** MyGo MCP now lives in
+[`auron-labs/mygo-framework`](https://github.com/auron-labs/mygo-framework/tree/main/mygomcp)
+as the `mygomcp` package, and is versioned with the framework.
+
+To migrate:
+
+```sh
+go get github.com/auron-labs/mygo-framework@latest
+```
+
+Then change the import from `github.com/auron-labs/mygo-mcp` to
+`github.com/auron-labs/mygo-framework/mygomcp`. The package name and API
+are unchanged.
+
 # MyGo MCP
 
 Give an MCP client a way to inspect, click, type into, and capture screenshots of
